@@ -37,7 +37,7 @@ def generate_launch_description():
     return LaunchDescription([
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource([ThisLaunchFileDir(), '/hsrb_rviz_simulator.launch.py']),
-            launch_arguments={'description_package': 'hsrc_description',
+            launch_arguments={'description_package': 'hsrb_description',
                               'description_file': 'hsrc1s.urdf.xacro',
                               'joint_limit_config_file': 'hsrc_joint_limits.yaml',
                               'timeopt_filter_launch': 'hsrc_timeopt_filter.launch.py',

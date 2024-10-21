@@ -68,6 +68,15 @@ def declare_arguments(context, robot_name):
     return declared_arguments
 
 
+def create_static_tf_node(parent_frame, child_frame):
+    return Node(package='tf2_ros',
+                executable='static_transform_publisher',
+                name='static_transform_publisher',
+                output='log',
+                arguments=['0.0', '0.0', '0.0', '0.0', '0.0', '0.0',
+                           parent_frame, child_frame])
+
+
 def launch_setup(context,
                  robot_name,
                  robot_pos,
@@ -142,6 +151,9 @@ def launch_setup(context,
              odom_to_tf_converter,
              odom_relay_node_wheel,
              wheel_odom_connector_tf,
+             create_static_tf_node('head_l_stereo_camera_link', 'head_l_stereo_camera_frame'),
+             create_static_tf_node('head_r_stereo_camera_link', 'head_r_stereo_camera_frame'),
+             create_static_tf_node('head_rgbd_sensor_link', 'head_rgbd_sensor_rgb_frame'),
              create_spawner_node('joint_state_broadcaster'),
              create_spawner_node('head_trajectory_controller'),
              create_spawner_node('arm_trajectory_controller'),

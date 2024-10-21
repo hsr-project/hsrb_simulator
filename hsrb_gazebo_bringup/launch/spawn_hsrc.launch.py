@@ -39,7 +39,7 @@ from tmc_launch_ros_utils.tmc_launch_ros_utils import load_robot_description
 def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('robot_name', default_value=os.getenv("ROBOT_NAME", "hsrc")),
-        DeclareLaunchArgument('description_package', default_value='hsrc_description'),
+        DeclareLaunchArgument('description_package', default_value='hsrb_description'),
         DeclareLaunchArgument('description_file', default_value='hsrc1s.urdf.xacro'),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource([ThisLaunchFileDir(), '/spawn_hsr.py']),

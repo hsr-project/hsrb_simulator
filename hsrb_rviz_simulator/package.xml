@@ -16,7 +16,6 @@
   <exec_depend>hsrb_description</exec_depend>
   <exec_depend>hsrb_manipulation_launch</exec_depend>
   <exec_depend>hsrb_pseudo_endeffector_controller</exec_depend>
-  <exec_depend>hsrc_description</exec_depend>
   <exec_depend>joint_state_broadcaster</exec_depend>
   <exec_depend>joint_trajectory_controller</exec_depend>
   <exec_depend>robot_state_publisher</exec_depend>

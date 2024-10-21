@@ -10,7 +10,6 @@
   <exec_depend>gazebo_ros</exec_depend>
   <exec_depend>hsrb_base_controllers</exec_depend>
   <exec_depend>hsrb_description</exec_depend>
-  <exec_depend>hsrc_description</exec_depend>
   <exec_depend>joint_state_broadcaster</exec_depend>
   <exec_depend>joint_trajectory_controller</exec_depend>
   <exec_depend>nav_msgs</exec_depend>
