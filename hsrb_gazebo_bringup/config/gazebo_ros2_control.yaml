@@ -2,16 +2,20 @@ controller_manager:
   ros__parameters:
     update_rate: 200
 
-    arm_trajectory_controller:
-      type: joint_trajectory_controller/JointTrajectoryController
     head_trajectory_controller:
-      type: joint_trajectory_controller/JointTrajectoryController
+      type: tmc_joint_command_controller/BasicJointCommandController
+    arm_trajectory_controller:
+      type: tmc_joint_command_controller/BasicJointCommandController
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
     omni_base_controller:
       type: hsrb_base_controllers/OmniBaseController
     gripper_controller:
       type: hsrb_gripper_controller/HrhGripperController
+    head_motion_command_limiter_controller:
+      type: tmc_realtime_controllers/MotionCommandLimiterController
+    arm_motion_command_limiter_controller:
+      type: tmc_realtime_controllers/MotionCommandLimiterController
 
 joint_state_broadcaster:
   ros__parameters:
@@ -34,6 +38,22 @@ joint_state_broadcaster:
       - velocity
       - effort
 
+head_trajectory_controller:
+  ros__parameters:
+    joints:
+      - head_tilt_joint
+      - head_pan_joint
+    command_joints:
+      - head_motion_command_limiter_controller/head_tilt_joint
+      - head_motion_command_limiter_controller/head_pan_joint
+    state_interfaces:
+      - position
+      - velocity
+    open_loop_control: true
+    use_velocity_state_for_trajectory: true
+    position_control_mode: 1
+    velocity_control_mode: 2
+
 arm_trajectory_controller:
   ros__parameters:
     joints:
@@ -42,22 +62,19 @@ arm_trajectory_controller:
       - arm_roll_joint
       - wrist_flex_joint
       - wrist_roll_joint
-    command_interfaces:
-      - position
+    command_joints:
+      - arm_motion_command_limiter_controller/arm_lift_joint
+      - arm_motion_command_limiter_controller/arm_flex_joint
+      - arm_motion_command_limiter_controller/arm_roll_joint
+      - arm_motion_command_limiter_controller/wrist_flex_joint
+      - arm_motion_command_limiter_controller/wrist_roll_joint
     state_interfaces:
       - position
-    open_loop_control: True
-
-head_trajectory_controller:
-  ros__parameters:
-    joints:
-      - head_tilt_joint
-      - head_pan_joint
-    command_interfaces:
-      - position
-    state_interfaces:
-      - position
-    open_loop_control: True
+      - velocity
+    open_loop_control: true
+    use_velocity_state_for_trajectory: true
+    position_control_mode: 1
+    velocity_control_mode: 2
 
 omni_base_controller:
   ros__parameters:
@@ -100,3 +117,24 @@ gripper_controller:
     force_control_pgain: 0.3
     force_control_igain: 0.05
     force_control_dgain: 0.4
+
+head_motion_command_limiter_controller:
+  ros__parameters:
+    joint_names:
+      - head_pan_joint
+      - head_tilt_joint
+    control_mode_switching: true
+    position_control_mode: 1
+    velocity_control_mode: 2
+
+arm_motion_command_limiter_controller:
+  ros__parameters:
+    joint_names:
+      - arm_lift_joint
+      - arm_flex_joint
+      - arm_roll_joint
+      - wrist_flex_joint
+      - wrist_roll_joint
+    control_mode_switching: true
+    position_control_mode: 1
+    velocity_control_mode: 2

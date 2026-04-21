@@ -1,30 +1,4 @@
-/*
-Copyright (c) 2025 TOYOTA MOTOR CORPORATION
-All rights reserved.
-Redistribution and use in source and binary forms, with or without
-modification, are permitted (subject to the limitations in the disclaimer
-below) provided that the following conditions are met:
-* Redistributions of source code must retain the above copyright notice, this
-  list of conditions and the following disclaimer.
-* Redistributions in binary form must reproduce the above copyright notice,
-  this list of conditions and the following disclaimer in the documentation
-  and/or other materials provided with the distribution.
-* Neither the name of the copyright holder nor the names of its contributors may be used
-  to endorse or promote products derived from this software without specific
-  prior written permission.
-NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY THIS
-LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
-THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
-LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
-GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
-HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
-LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
-OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
-DAMAGE.
-*/
+/// @copyright Copyright (C) 2025 Toyota Motor Corporation
 #include "hsrb_gz_ros2_control/hsrb_system.hpp"
 
 #include <limits>
@@ -57,9 +31,9 @@ DAMAGE.
 
 namespace {
 
-// Speed gain of the gripping motion
+// 握り込み動作の速度ゲイン
 constexpr double kGraspVelocityGain = 100.0;
-// Torque tolerance error of the gripping motion [Nm]
+// 握り込み動作のトルク許容誤差[Nm]
 constexpr double kGraspEffortTolerance = 0.01;
 
 }  // unnamed namespace
@@ -127,7 +101,7 @@ void GazeboSimGripperSystem::write(
   }
 
   // gripper
-  // Not accurate, provisional implementation, vibrates without d
+  // 正確ではない，とりあえずの実装，dがないと振動する
   constexpr double d_gain = 0.1;
 
   const double hand_l_torque_cmd = -hand_l_torque - d_gain * this->hand_l_spring_proximal_joint_vel_;
@@ -184,7 +158,7 @@ bool GazeboSimGripperSystem::initGripper(
     return false;
   }
 
-  // Inherit Interface from parent. Remove what was used here
+  // 親からInterfaceを引き継ぐ. ここで使ったものは取り除いておく
   for (auto it = parent_command_interfaces.begin(); it != parent_command_interfaces.end(); ++it) {
     if (it->get_prefix_name() == this->motor_joint_.name &&
         it->get_interface_name() == hardware_interface::HW_IF_POSITION) {
@@ -199,7 +173,7 @@ bool GazeboSimGripperSystem::initGripper(
   for (auto it = parent_state_interfaces.begin(); it != parent_state_interfaces.end(); ++it) {
     if (it->get_prefix_name() == this->motor_joint_.name &&
         it->get_interface_name() == hardware_interface::HW_IF_EFFORT) {
-      // Discard this as it won't be used later
+      // これは後で使わないので捨てておく
       auto _ = std::make_unique<hardware_interface::StateInterface>(std::move(*it));
       break;
     }
@@ -310,7 +284,7 @@ bool GazeboSimSystem::initSim(
     }
   }
 
-  // Skip moved elements and inherit the remaining Interface from parent
+  // move済み要素はスキップして，親のInterfaceの残りを引き継ぐ
   for (auto& command_interface : parent_command_interfaces) {
     if (command_interface.get_prefix_name().empty()) {
       continue;
@@ -322,6 +296,31 @@ bool GazeboSimSystem::initSim(
       continue;
     }
     this->state_interfaces_.push_back(std::move(state_interface));
+  }
+
+  for (const auto& joint : hardware_info.joints) {
+    auto has_command = [](const hardware_interface::ComponentInfo& joint_info, const std::string& interface_name) {
+      return std::any_of(
+          joint_info.command_interfaces.begin(), joint_info.command_interfaces.end(),
+          [&](const auto& command_interface) {
+            return command_interface.name == interface_name;
+          });
+    };
+    auto is_gripper_joint = [&](const hardware_interface::ComponentInfo& joint_info) {
+      return std::any_of(
+          this->gripper_systems_.begin(), this->gripper_systems_.end(),
+          [&](const auto& gripper_system) {
+            return gripper_system->motor_joint_name() == joint_info.name;
+          });
+    };
+    if (has_command(joint, hardware_interface::HW_IF_POSITION) &&
+        has_command(joint, hardware_interface::HW_IF_VELOCITY) &&
+        !is_gripper_joint(joint)) {
+      drive_modes_.emplace_back(joint.name);
+    }
+  }
+  for (auto& drive_mode : drive_modes_) {
+    command_interfaces_.emplace_back(drive_mode.name, "command_drive_mode", &drive_mode.command_value);
   }
 
   for (const auto& joint : hardware_info.joints) {
@@ -381,13 +380,53 @@ hardware_interface::return_type GazeboSimSystem::read(
 hardware_interface::return_type GazeboSimSystem::perform_command_mode_switch(
     const std::vector<std::string>& start_interfaces,
     const std::vector<std::string>& stop_interfaces) {
+  // ほぼparentと同じ実装だが，内部にアクセス出来ないのでしょうがない
+  for (auto& drive_mode : drive_modes_) {
+    for (const std::string & interface_name : start_interfaces) {
+      if (interface_name == (drive_mode.name + "/" + hardware_interface::HW_IF_POSITION)) {
+        drive_mode.command_value = gz_ros2_control::GazeboSimSystemInterface::ControlMethod_::POSITION;
+        drive_mode.previous_command_value = drive_mode.command_value;
+      } else if (interface_name == (drive_mode.name + "/" + hardware_interface::HW_IF_VELOCITY)) {
+        drive_mode.command_value = gz_ros2_control::GazeboSimSystemInterface::ControlMethod_::VELOCITY;
+        drive_mode.previous_command_value = drive_mode.command_value;
+      } else if (interface_name == (drive_mode.name + "/" + hardware_interface::HW_IF_EFFORT)) {
+        drive_mode.command_value = gz_ros2_control::GazeboSimSystemInterface::ControlMethod_::EFFORT;
+        drive_mode.previous_command_value = drive_mode.command_value;
+      }
+    }
+  }
   return this->parent_->perform_command_mode_switch(start_interfaces, stop_interfaces);
 }
 
 hardware_interface::return_type GazeboSimSystem::write(
     const rclcpp::Time& time,
     const rclcpp::Duration& period) {
-  const auto result = this->parent_->write(time, period);
+  std::vector<std::string> start_interfaces;
+  std::vector<std::string> stop_interfaces;
+  for (auto& drive_mode : drive_modes_) {
+    if (drive_mode.command_value != drive_mode.previous_command_value) {
+      if (drive_mode.command_value == gz_ros2_control::GazeboSimSystemInterface::ControlMethod_::POSITION) {
+        start_interfaces.push_back(drive_mode.name + "/" + hardware_interface::HW_IF_POSITION);
+        stop_interfaces.push_back(drive_mode.name + "/" + hardware_interface::HW_IF_VELOCITY);
+        stop_interfaces.push_back(drive_mode.name + "/" + hardware_interface::HW_IF_EFFORT);
+      } else if (drive_mode.command_value == gz_ros2_control::GazeboSimSystemInterface::ControlMethod_::VELOCITY) {
+        start_interfaces.push_back(drive_mode.name + "/" + hardware_interface::HW_IF_VELOCITY);
+        stop_interfaces.push_back(drive_mode.name + "/" + hardware_interface::HW_IF_POSITION);
+        stop_interfaces.push_back(drive_mode.name + "/" + hardware_interface::HW_IF_EFFORT);
+      } else if (drive_mode.command_value == gz_ros2_control::GazeboSimSystemInterface::ControlMethod_::EFFORT) {
+        start_interfaces.push_back(drive_mode.name + "/" + hardware_interface::HW_IF_EFFORT);
+        stop_interfaces.push_back(drive_mode.name + "/" + hardware_interface::HW_IF_POSITION);
+        stop_interfaces.push_back(drive_mode.name + "/" + hardware_interface::HW_IF_VELOCITY);
+      }
+      drive_mode.previous_command_value = drive_mode.command_value;
+    }
+  }
+  const auto perform_result = this->parent_->perform_command_mode_switch(start_interfaces, stop_interfaces);
+  if (perform_result != hardware_interface::return_type::OK) {
+    return perform_result;
+  }
+
+  const auto write_result = this->parent_->write(time, period);
 
   for (auto& gripper_system : this->gripper_systems_) {
     gripper_system->write(this->ecm_);
@@ -415,7 +454,7 @@ hardware_interface::return_type GazeboSimSystem::write(
       }
     }
   }
-  return result;
+  return write_result;
 }
 }  // namespace hsrb_gz_ros2_control
 

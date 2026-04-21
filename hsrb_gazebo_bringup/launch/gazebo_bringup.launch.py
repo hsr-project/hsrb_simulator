@@ -1,35 +1,12 @@
 #!/usr/bin/env python3
-# Copyright (c) 2024 TOYOTA MOTOR CORPORATION
-# All rights reserved.
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted (subject to the limitations in the disclaimer
-# below) provided that the following conditions are met:
-# * Redistributions of source code must retain the above copyright notice, this
-#   list of conditions and the following disclaimer.
-# * Redistributions in binary form must reproduce the above copyright notice,
-#   this list of conditions and the following disclaimer in the documentation
-#   and/or other materials provided with the distribution.
-# * Neither the name of the copyright holder nor the names of its contributors may be used
-#   to endorse or promote products derived from this software without specific
-#   prior written permission.
-# NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY THIS
-# LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
-# THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
-# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
-# GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
-# HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
-# LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
-# OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
-# DAMAGE.
 # -*- coding: utf-8 -*-
+# Copyright (C) 2021 Toyota Motor Corporation
 import os
 
 from ament_index_python.packages import get_package_share_directory
 
 from launch import LaunchContext, LaunchDescription
+from launch.action import Action
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
@@ -119,7 +96,7 @@ def spwan_entity_node(context: LaunchContext, args: dict):
 def gz_parameter_bridge_node(context: LaunchContext, args: dict):
     robot_name_value = context.perform_substitution(args['robot_name'])
 
-    # “@” for bidirectional mode, “[” for one-way mode. Bidirectional mode often causes trouble and should be avoided as much as possible
+    # 「@」にすると双方向モード、「[」だと一方向モードになる。双方向モードはトラブルの発生が多いので、なるべく避けるのがよい
     argument_list = [
         '/clock@rosgraph_msgs/msg/Clock[ignition.msgs.Clock',
         f'/model/{robot_name_value}/odometry@nav_msgs/msg/Odometry[ignition.msgs.Odometry',
@@ -153,6 +130,13 @@ def gz_parameter_bridge_node(context: LaunchContext, args: dict):
                  output='screen',
                  arguments=argument_list,
                  remappings=remapping_list)]
+
+
+def create_limiter_and_controller(limiter_name: str, controller_name: str) -> list[Action]:
+    limiter_controller_spawner = create_spawner_node(limiter_name)
+    controller_spawner = create_spawner_node(controller_name)
+    return [limiter_controller_spawner,
+            set_on_process_exit_event_handler(limiter_controller_spawner.actions[0], controller_spawner.actions)]
 
 
 def generate_launch_description():
@@ -192,8 +176,12 @@ def generate_launch_description():
                      'odom_child_frame': 'base_footprint'}],
         remappings=[('switched_odom', 'odom')])
 
-    motion_command_limitter_controller_spawner = create_spawner_node('motion_command_limitter_controller')
-    omni_base_controller_spawner = create_spawner_node('omni_base_controller')
+    head_trajectory_controller_spawner = create_limiter_and_controller(
+        'head_motion_command_limiter_controller', 'head_trajectory_controller')
+    arm_trajectory_controller_spawner = create_limiter_and_controller(
+        'arm_motion_command_limiter_controller', 'arm_trajectory_controller')
+    omni_base_controller_spawner = create_limiter_and_controller(
+        'base_motion_command_limiter_controller', 'omni_base_controller')
     return LaunchDescription(declare_arguments() + [
         SetParameter(name='use_sim_time', value=True),
         gz_sim,
@@ -205,9 +193,7 @@ def generate_launch_description():
         sensor_frames_node,
         odometry_switcher,
         create_spawner_node('joint_state_broadcaster'),
-        create_spawner_node('head_trajectory_controller'),
-        create_spawner_node('arm_trajectory_controller'),
-        motion_command_limitter_controller_spawner,
-        set_on_process_exit_event_handler(motion_command_limitter_controller_spawner.actions[0],
-                                          omni_base_controller_spawner.actions),
-        create_spawner_node('gripper_controller')])
+        create_spawner_node('gripper_controller')]
+        + head_trajectory_controller_spawner
+        + arm_trajectory_controller_spawner
+        + omni_base_controller_spawner)
