@@ -1,7 +1,7 @@
 <package format="3">
   <name>hsrb_gazebo_bringup</name>
-  <version>2.4.0</version>
-  <description>ガゼボシミュレーションのための起動スクリプト</description>
+  <version>3.0.0</version>
+  <description>Bringup scripts for gazebo simulation</description>
 
   <maintainer email="xr-hsr-support@mail.toyota.co.jp">HSR Support</maintainer>
 
@@ -27,6 +27,7 @@
   <exec_depend>ros_gz_sim</exec_depend>
   <exec_depend>ros2launch</exec_depend>
   <exec_depend>tmc_gz_plugins</exec_depend>
+  <exec_depend>tmc_joint_command_controller</exec_depend>
   <exec_depend>tmc_launch_ros_utils</exec_depend>
   <exec_depend>tmc_odometry_switcher</exec_depend>
   <exec_depend>tmc_realtime_controllers</exec_depend>

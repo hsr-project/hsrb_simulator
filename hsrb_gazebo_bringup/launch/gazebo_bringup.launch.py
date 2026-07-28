@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2024 TOYOTA MOTOR CORPORATION
+# Copyright (c) 2026 TOYOTA MOTOR CORPORATION
 # All rights reserved.
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted (subject to the limitations in the disclaimer
@@ -119,7 +119,7 @@ def spwan_entity_node(context: LaunchContext, args: dict):
 def gz_parameter_bridge_node(context: LaunchContext, args: dict):
     robot_name_value = context.perform_substitution(args['robot_name'])
 
-    # “@” for bidirectional mode, “[” for one-way mode. Bidirectional mode often causes trouble and should be avoided as much as possible
+    # If set to "@", it becomes bidirectional mode, and if set to "[", it becomes unidirectional mode. Bidirectional mode tends to cause more issues, so it is better to avoid it whenever possible.
     argument_list = [
         '/clock@rosgraph_msgs/msg/Clock[ignition.msgs.Clock',
         f'/model/{robot_name_value}/odometry@nav_msgs/msg/Odometry[ignition.msgs.Odometry',
@@ -192,7 +192,7 @@ def generate_launch_description():
                      'odom_child_frame': 'base_footprint'}],
         remappings=[('switched_odom', 'odom')])
 
-    motion_command_limitter_controller_spawner = create_spawner_node('motion_command_limitter_controller')
+    motion_command_limiter_controller_spawner = create_spawner_node('motion_command_limiter_controller')
     omni_base_controller_spawner = create_spawner_node('omni_base_controller')
     return LaunchDescription(declare_arguments() + [
         SetParameter(name='use_sim_time', value=True),
@@ -207,7 +207,7 @@ def generate_launch_description():
         create_spawner_node('joint_state_broadcaster'),
         create_spawner_node('head_trajectory_controller'),
         create_spawner_node('arm_trajectory_controller'),
-        motion_command_limitter_controller_spawner,
-        set_on_process_exit_event_handler(motion_command_limitter_controller_spawner.actions[0],
+        motion_command_limiter_controller_spawner,
+        set_on_process_exit_event_handler(motion_command_limiter_controller_spawner.actions[0],
                                           omni_base_controller_spawner.actions),
         create_spawner_node('gripper_controller')])

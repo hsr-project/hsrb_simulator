@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2025 TOYOTA MOTOR CORPORATION
+Copyright (c) 2026 TOYOTA MOTOR CORPORATION
 All rights reserved.
 Redistribution and use in source and binary forms, with or without
 modification, are permitted (subject to the limitations in the disclaimer
@@ -78,8 +78,27 @@ struct JointData {
 
 using CallbackReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
 
-// TODO(MasayukiMasuda): 他のグリッパーを追加したくなったら，インターフェースクラスを作って管理する
-class GazeboSimGripperSystem {
+// GazeboGripper interface
+class IGazeboSimGripperSystem {
+ public:
+  virtual ~IGazeboSimGripperSystem() = default;
+
+  virtual void read(const sim::EntityComponentManager* ecm) = 0;
+  virtual void write(sim::EntityComponentManager* ecm) = 0;
+
+  virtual bool initGripper(
+      const std::map<std::string, gz::sim::Entity>& enableJoints,
+      const hardware_interface::HardwareInfo& hardware_info,
+      const std::string& prefix,
+      std::vector<hardware_interface::CommandInterface>& command_interfaces,
+      std::vector<hardware_interface::CommandInterface>& parent_command_interfaces,
+      std::vector<hardware_interface::StateInterface>& state_interfaces,
+      std::vector<hardware_interface::StateInterface>& parent_state_interfaces) = 0;
+
+  virtual std::string motor_joint_name() const = 0;
+};
+
+class GazeboSimGripperSystem : public IGazeboSimGripperSystem {
  public:
   GazeboSimGripperSystem()
       : hand_l_spring_proximal_joint_pos_(0.0),
@@ -92,8 +111,8 @@ class GazeboSimGripperSystem {
         grasping_flag_(0.0),
         grasping_flag_cmd_(0.0) {}
 
-  void read(const sim::EntityComponentManager* ecm);
-  void write(sim::EntityComponentManager* ecm);
+  void read(const sim::EntityComponentManager* ecm) override;
+  void write(sim::EntityComponentManager* ecm) override;
 
   bool initGripper(
       const std::map<std::string, gz::sim::Entity>& enableJoints,
@@ -102,14 +121,16 @@ class GazeboSimGripperSystem {
       std::vector<hardware_interface::CommandInterface>& command_interfaces,
       std::vector<hardware_interface::CommandInterface>& parent_command_interfaces,
       std::vector<hardware_interface::StateInterface>& state_interfaces,
-      std::vector<hardware_interface::StateInterface>& parent_state_interfaces);
+      std::vector<hardware_interface::StateInterface>& parent_state_interfaces) override;
+
+  std::string motor_joint_name() const override { return this->motor_joint_.name; }
 
  private:
   JointData motor_joint_;
 
-  // Since it is impossible to access the structure of GazeboSimSystemInterface, intercept the Interface to retrieve and modify the necessary information
-  std::unique_ptr<hardware_interface::CommandInterface> command_interface_;
-  std::unique_ptr<hardware_interface::StateInterface> state_interface_;
+  // Since accessing the structure of GazeboSimSystemInterface is not possible, intercept the interface to retrieve and modify the necessary information
+  hardware_interface::CommandInterface::SharedPtr command_interface_;
+  hardware_interface::StateInterface::ConstSharedPtr state_interface_;
 
   sim::Entity hand_l_spring_proximal_joint_;
   sim::Entity hand_r_spring_proximal_joint_;
@@ -135,7 +156,7 @@ class GazeboSimSystem : public gz_ros2_control::GazeboSimSystemInterface {
   GazeboSimSystem()
       : gz_system_loader_("gz_ros2_control", "gz_ros2_control::GazeboSimSystemInterface") {}
 
-  CallbackReturn on_init(const hardware_interface::HardwareInfo& system_info) override;
+  CallbackReturn on_init(const hardware_interface::HardwareComponentInterfaceParams& params) override;
   CallbackReturn on_configure(const rclcpp_lifecycle::State& previous_state) override;
 
   std::vector<hardware_interface::StateInterface> export_state_interfaces() override;
@@ -161,9 +182,11 @@ class GazeboSimSystem : public gz_ros2_control::GazeboSimSystemInterface {
       std::map<std::string, sim::Entity>& joints,
       const hardware_interface::HardwareInfo& hardware_info,
       sim::EntityComponentManager& _ecm,
-      int& update_rate) override;
+      unsigned int update_rate) override;
 
-  std::string get_name() const override { return this->parent_->get_name(); }
+  virtual std::unique_ptr<IGazeboSimGripperSystem> CreatGripper() {
+    return std::make_unique<GazeboSimGripperSystem>();
+  }
 
  private:
   std::vector<hardware_interface::StateInterface> state_interfaces_;
@@ -174,7 +197,7 @@ class GazeboSimSystem : public gz_ros2_control::GazeboSimSystemInterface {
 
   sim::EntityComponentManager* ecm_{nullptr};
 
-  std::vector<std::unique_ptr<GazeboSimGripperSystem>> gripper_systems_;
+  std::vector<std::unique_ptr<IGazeboSimGripperSystem>> gripper_systems_;
 
   struct JointSaturation {
     sim::Entity joint;
@@ -182,6 +205,15 @@ class GazeboSimSystem : public gz_ros2_control::GazeboSimSystemInterface {
     double upper;
   };
   std::vector<JointSaturation> joint_saturations_;
+
+  struct DriveMode {
+    std::string name;
+    double command_value;
+    double previous_command_value;
+
+    explicit DriveMode(const std::string& name) : name(name), command_value(0.0), previous_command_value(0.0) {}
+  };
+  std::vector<DriveMode> drive_modes_;
 };
 
 }  // namespace hsrb_gz_ros2_control

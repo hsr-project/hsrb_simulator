@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2025 TOYOTA MOTOR CORPORATION
+Copyright (c) 2026 TOYOTA MOTOR CORPORATION
 All rights reserved.
 Redistribution and use in source and binary forms, with or without
 modification, are permitted (subject to the limitations in the disclaimer
@@ -57,9 +57,9 @@ DAMAGE.
 
 namespace {
 
-// Speed gain of the gripping motion
+// Speed gain for gripping motion
 constexpr double kGraspVelocityGain = 100.0;
-// Torque tolerance error of the gripping motion [Nm]
+// Torque tolerance error for gripping motion [Nm]
 constexpr double kGraspEffortTolerance = 0.01;
 
 }  // unnamed namespace
@@ -71,7 +71,11 @@ void GazeboSimGripperSystem::read(const sim::EntityComponentManager* ecm) {
   if (!(this->state_interface_)) {
     return;
   }
-  this->motor_joint_.joint_position = state_interface_->get_value();
+  const auto position = state_interface_->get_optional();
+  if (!position) {
+    return;
+  }
+  this->motor_joint_.joint_position = position.value();
 
   this->hand_l_spring_proximal_joint_pos_ =
       ecm->Component<sim::components::JointPosition>(this->hand_l_spring_proximal_joint_)->Data()[0];
@@ -99,9 +103,10 @@ void GazeboSimGripperSystem::write(
 
   this->drive_mode_ = this->drive_mode_cmd_;
   if (this->drive_mode_ == tmc_exxx_servo_motor_protocol::kDriveModeHandPosition) {
-    command_interface_->set_value(this->motor_joint_.joint_position_cmd);
+    // Ignore success or failure
+    static_cast<void>(command_interface_->set_value(this->motor_joint_.joint_position_cmd));
   } else if (this->drive_mode_ == tmc_exxx_servo_motor_protocol::kDriveModeHandGrasp) {
-    command_interface_->set_value(this->motor_joint_.joint_position);
+    static_cast<void>(command_interface_->set_value(this->motor_joint_.joint_position));
 
     // TODO(Takeshita) パラメータ調整
     if (this->grasping_flag_ > 0.0) {
@@ -127,8 +132,8 @@ void GazeboSimGripperSystem::write(
   }
 
   // gripper
-  // Not accurate, provisional implementation, vibrates without d
-  constexpr double d_gain = 0.1;
+  // Not accurate, temporary implementation, will vibrate without d
+  constexpr double d_gain = 0.2;
 
   const double hand_l_torque_cmd = -hand_l_torque - d_gain * this->hand_l_spring_proximal_joint_vel_;
   if (!ecm->Component<sim::components::JointForceCmd>(this->hand_l_spring_proximal_joint_)) {
@@ -143,7 +148,7 @@ void GazeboSimGripperSystem::write(
   const double hand_r_torque_cmd = -hand_r_torque - d_gain * this->hand_r_spring_proximal_joint_vel_;
   if (!ecm->Component<sim::components::JointForceCmd>(this->hand_r_spring_proximal_joint_)) {
     ecm->CreateComponent(this->hand_r_spring_proximal_joint_,
-        sim::components::JointForceCmd({hand_r_torque_cmd}));
+                         sim::components::JointForceCmd({hand_r_torque_cmd}));
   } else {
     const auto cmd = ecm->Component<sim::components::JointForceCmd>(this->hand_r_spring_proximal_joint_);
     *cmd = sim::components::JointForceCmd({hand_r_torque_cmd});
@@ -188,7 +193,7 @@ bool GazeboSimGripperSystem::initGripper(
   for (auto it = parent_command_interfaces.begin(); it != parent_command_interfaces.end(); ++it) {
     if (it->get_prefix_name() == this->motor_joint_.name &&
         it->get_interface_name() == hardware_interface::HW_IF_POSITION) {
-      this->command_interface_ = std::make_unique<hardware_interface::CommandInterface>(std::move(*it));
+      this->command_interface_ = std::make_shared<hardware_interface::CommandInterface>(std::move(*it));
       break;
     }
   }
@@ -200,12 +205,12 @@ bool GazeboSimGripperSystem::initGripper(
     if (it->get_prefix_name() == this->motor_joint_.name &&
         it->get_interface_name() == hardware_interface::HW_IF_EFFORT) {
       // Discard this as it won't be used later
-      auto _ = std::make_unique<hardware_interface::StateInterface>(std::move(*it));
+      auto _ = std::move(*it);
       break;
     }
     if (it->get_prefix_name() == this->motor_joint_.name &&
         it->get_interface_name() == hardware_interface::HW_IF_POSITION) {
-      this->state_interface_ = std::make_unique<hardware_interface::StateInterface>(std::move(*it));
+      this->state_interface_ = std::make_shared<hardware_interface::StateInterface>(std::move(*it));
       break;
     }
   }
@@ -273,7 +278,7 @@ bool GazeboSimSystem::initSim(
     std::map<std::string, sim::Entity>& enableJoints,
     const hardware_interface::HardwareInfo& hardware_info,
     sim::EntityComponentManager& _ecm,
-    int& update_rate) {
+    unsigned int update_rate) {
   this->nh_ = model_nh;
 
   try {
@@ -294,7 +299,7 @@ bool GazeboSimSystem::initSim(
   // TODO(MasayukiMasuda): configなど読み込んで必要なものだけ立ち上げるようにする
   const std::vector<std::string> prefixes = {"", "right_", "left_"};
   for (const auto& prefix : prefixes) {
-    auto gripper_system = std::make_unique<GazeboSimGripperSystem>();
+    auto gripper_system = CreatGripper();
     if (gripper_system->initGripper(
         enableJoints,
         hardware_info,
@@ -325,6 +330,32 @@ bool GazeboSimSystem::initSim(
   }
 
   for (const auto& joint : hardware_info.joints) {
+    auto has_command = [](const hardware_interface::ComponentInfo& joint_info, const std::string& interface_name) {
+      return std::any_of(
+          joint_info.command_interfaces.begin(), joint_info.command_interfaces.end(),
+          [&](const auto& command_interface) {
+            return command_interface.name == interface_name;
+          });
+    };
+    auto is_gripper_joint = [&](const hardware_interface::ComponentInfo& joint_info) {
+      return std::any_of(
+          this->gripper_systems_.begin(), this->gripper_systems_.end(),
+          [&](const auto& gripper_system) {
+            return gripper_system->motor_joint_name() == joint_info.name;
+          });
+    };
+    if (has_command(joint, hardware_interface::HW_IF_POSITION) &&
+        has_command(joint, hardware_interface::HW_IF_VELOCITY) &&
+        !is_gripper_joint(joint)) {
+      drive_modes_.emplace_back(joint.name);
+    }
+  }
+  for (auto& drive_mode : drive_modes_) {
+    command_interfaces_.emplace_back(
+        drive_mode.name, "command_drive_mode", &drive_mode.command_value);
+  }
+
+  for (const auto& joint : hardware_info.joints) {
     for (const auto& param : joint.parameters) {
       if ((param.first == "do_saturate") &&
           (param.second == "true" || param.second == "True" || param.second == "1")) {
@@ -340,8 +371,9 @@ bool GazeboSimSystem::initSim(
   return true;
 }
 
-CallbackReturn GazeboSimSystem::on_init(const hardware_interface::HardwareInfo& info) {
-  return this->parent_->on_init(info);
+
+CallbackReturn GazeboSimSystem::on_init(const hardware_interface::HardwareComponentInterfaceParams& params) {
+  return this->parent_->on_init(params);
 }
 
 CallbackReturn GazeboSimSystem::on_configure(const rclcpp_lifecycle::State& previous_state) {
@@ -381,13 +413,53 @@ hardware_interface::return_type GazeboSimSystem::read(
 hardware_interface::return_type GazeboSimSystem::perform_command_mode_switch(
     const std::vector<std::string>& start_interfaces,
     const std::vector<std::string>& stop_interfaces) {
+  // Almost the same implementation as parent, but no choice due to lack of internal access
+  for (auto& drive_mode : drive_modes_) {
+    for (const std::string & interface_name : start_interfaces) {
+      if (interface_name == (drive_mode.name + "/" + hardware_interface::HW_IF_POSITION)) {
+        drive_mode.command_value = gz_ros2_control::GazeboSimSystemInterface::ControlMethod_::POSITION;
+        drive_mode.previous_command_value = drive_mode.command_value;
+      } else if (interface_name == (drive_mode.name + "/" + hardware_interface::HW_IF_VELOCITY)) {
+        drive_mode.command_value = gz_ros2_control::GazeboSimSystemInterface::ControlMethod_::VELOCITY;
+        drive_mode.previous_command_value = drive_mode.command_value;
+      } else if (interface_name == (drive_mode.name + "/" + hardware_interface::HW_IF_EFFORT)) {
+        drive_mode.command_value = gz_ros2_control::GazeboSimSystemInterface::ControlMethod_::EFFORT;
+        drive_mode.previous_command_value = drive_mode.command_value;
+      }
+    }
+  }
   return this->parent_->perform_command_mode_switch(start_interfaces, stop_interfaces);
 }
 
 hardware_interface::return_type GazeboSimSystem::write(
     const rclcpp::Time& time,
     const rclcpp::Duration& period) {
-  const auto result = this->parent_->write(time, period);
+  std::vector<std::string> start_interfaces;
+  std::vector<std::string> stop_interfaces;
+  for (auto& drive_mode : drive_modes_) {
+    if (drive_mode.command_value != drive_mode.previous_command_value) {
+      if (drive_mode.command_value == gz_ros2_control::GazeboSimSystemInterface::ControlMethod_::POSITION) {
+        start_interfaces.push_back(drive_mode.name + "/" + hardware_interface::HW_IF_POSITION);
+        stop_interfaces.push_back(drive_mode.name + "/" + hardware_interface::HW_IF_VELOCITY);
+        stop_interfaces.push_back(drive_mode.name + "/" + hardware_interface::HW_IF_EFFORT);
+      } else if (drive_mode.command_value == gz_ros2_control::GazeboSimSystemInterface::ControlMethod_::VELOCITY) {
+        start_interfaces.push_back(drive_mode.name + "/" + hardware_interface::HW_IF_VELOCITY);
+        stop_interfaces.push_back(drive_mode.name + "/" + hardware_interface::HW_IF_POSITION);
+        stop_interfaces.push_back(drive_mode.name + "/" + hardware_interface::HW_IF_EFFORT);
+      } else if (drive_mode.command_value == gz_ros2_control::GazeboSimSystemInterface::ControlMethod_::EFFORT) {
+        start_interfaces.push_back(drive_mode.name + "/" + hardware_interface::HW_IF_EFFORT);
+        stop_interfaces.push_back(drive_mode.name + "/" + hardware_interface::HW_IF_POSITION);
+        stop_interfaces.push_back(drive_mode.name + "/" + hardware_interface::HW_IF_VELOCITY);
+      }
+      drive_mode.previous_command_value = drive_mode.command_value;
+    }
+  }
+  const auto perform_result = this->parent_->perform_command_mode_switch(start_interfaces, stop_interfaces);
+  if (perform_result != hardware_interface::return_type::OK) {
+    return perform_result;
+  }
+
+  const auto write_result = this->parent_->write(time, period);
 
   for (auto& gripper_system : this->gripper_systems_) {
     gripper_system->write(this->ecm_);
@@ -415,7 +487,7 @@ hardware_interface::return_type GazeboSimSystem::write(
       }
     }
   }
-  return result;
+  return write_result;
 }
 }  // namespace hsrb_gz_ros2_control
 
