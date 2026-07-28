@@ -2,6 +2,15 @@
 Changelog for package hsrb_gazebo_bringup
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+3.0.0 (2026-06-29)
+-------------------
+* Migration to ROS2 jazzy
+* Contributors: Katsushi Fukuoka, Keisuke Takeshita
+
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Changelog for package hsrb_gazebo_bringup
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 2.4.0 (2025-12-04)
 -------------------
 * Moved gripper functionalities in GazeboSimSystem to a separate class

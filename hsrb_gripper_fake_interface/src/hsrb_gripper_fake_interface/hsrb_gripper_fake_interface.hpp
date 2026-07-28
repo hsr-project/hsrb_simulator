@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2025 TOYOTA MOTOR CORPORATION
+Copyright (c) 2026 TOYOTA MOTOR CORPORATION
 All rights reserved.
 Redistribution and use in source and binary forms, with or without
 modification, are permitted (subject to the limitations in the disclaimer
@@ -46,7 +46,7 @@ class HsrbGripperFakeInterface : public hardware_interface::SystemInterface {
  public:
   virtual ~HsrbGripperFakeInterface() = default;
 
-  CallbackReturn on_init(const hardware_interface::HardwareInfo& hardware_info) override;
+  CallbackReturn on_init(const hardware_interface::HardwareComponentInterfaceParams& params) override;
   CallbackReturn on_configure(const rclcpp_lifecycle::State& previous_state) override;
   CallbackReturn on_activate(const rclcpp_lifecycle::State& previous_state) override;
   CallbackReturn on_deactivate(const rclcpp_lifecycle::State& previous_state) override;
@@ -62,42 +62,42 @@ class HsrbGripperFakeInterface : public hardware_interface::SystemInterface {
   }
 
  protected:
-  // hand joint name
+  // Name of the hand joint
   std::string joint_name_;
 
-  // current position
+  // Current position
   double state_position_;
-  // current velocity
+  // Current velocity
   double state_velocity_;
-  // current effort
+  // Current effort
   double state_effort_;
-  // current drive mode
+  // Current drive mode value
   double state_drive_mode_;
-  // current grasping flag
+  // Current grasping flag value
   double state_grasping_flag_;
-  // current value
+  // Current value
   double state_current_;
 
-  // position command value
+  // Commanded position
   double command_position_;
-  // effort command value
+  // Commanded effort
   double command_effort_;
-  // drive mode command value
+  // Commanded drive mode value
   double command_drive_mode_;
-  // grasping flag command value
+  // Commanded grasping flag value
   double command_grasping_flag_;
 
-  // previous cycle position command value
+  // Commanded position value from the previous cycle
   double previous_command_position_;
 
-  // minimum position value
+  // Minimum position value
   double param_position_min_;
-  // maximum position value
+  // Maximum position value
   double param_position_max_;
-  // effort threshold
+  // Effort threshold
   double param_effort_min_;
 
-  // last time velocity was updated
+  // Last time velocity was updated
   rclcpp::Time last_velocity_update_time_;
 };
 
